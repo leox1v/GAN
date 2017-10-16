@@ -13,13 +13,11 @@ class Model():
         self.lat = tf.placeholder(tf.float32, shape=[None, self.FLAGS.z_dim], name='latent')
         c_mn = tf.cast(self.lat[:, self.FLAGS.z_dim - 10 : self.FLAGS.z_dim], tf.int32)
         c_mn_labels = tf.argmax(c_mn, axis=1)
-        c_1 = self.lat[:, 0]
-        c_2 = self.lat[:, 1]
 
         # Training Procedure
         self.g_z, self.theta_g = self.generator(self.lat)
         d_logit_real, _, self.theta_d, _ = self.discriminator(self.X)
-        d_logit_synth, q_c, _, theta_q = self.discriminator(self.g_z, reuse=True)
+        d_logit_synth, q_c, _, theta_q = self.discriminator(self.g_z)
 
         # Loss for Discriminator: - log D(x) - log(1-D(G(z)))
         D_loss_real = tf.reduce_mean(
@@ -54,12 +52,12 @@ class Model():
         with tf.variable_scope("generator"):
             g_hidden = tf.layers.dense(z, self.FLAGS.G_h1, activation=tf.nn.relu, kernel_initializer=xavier_initializer(), name="G1")
             g_logit = tf.layers.dense(g_hidden, self.img_dim, kernel_initializer=xavier_initializer(), name="G2")
-            g_z = tf.nn.sigmoid(g_logit)
+            g_z = tf.sigmoid(g_logit)
         theta_g = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="generator")
         return g_z, theta_g
 
-
-    def discriminator(self, x, reuse=False):
+    def discriminator(self, x):
+        reuse = len([t for t in tf.global_variables() if t.name.startswith('discriminator')]) > 0
         with tf.variable_scope("discriminator"):
             d_hidden = tf.layers.dense(x, self.FLAGS.D_h1, activation=tf.nn.relu, kernel_initializer=xavier_initializer(), reuse=reuse, name="D1")
             d_logit = tf.layers.dense(d_hidden, 1, kernel_initializer=xavier_initializer(), reuse=reuse, name="D2")
