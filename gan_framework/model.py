@@ -93,7 +93,10 @@ class Model():
         with tf.variable_scope(scope):
             g_hidden = tf.layers.dense(z, self.FLAGS.G_h1, activation=tf.nn.relu, kernel_initializer=xavier_initializer(), name="G1", reuse=reuse)
             g_z = tf.layers.dense(g_hidden, self.img_dim, kernel_initializer=xavier_initializer(), name="G2", reuse=reuse)
-            #g_z = tf.nn.sigmoid(g_logit)
+            if self.FLAGS.dataset == "mnist":
+                g_z = tf.nn.sigmoid(g_z, name="g_z")
+            else:
+                g_z = tf.identity(g_z, name="g_z")
         theta_g = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope)
         return g_z, theta_g
 
@@ -114,6 +117,52 @@ class Model():
         tf.summary.scalar("G_SGradientSum", self.g_gradients)
         tf.summary.scalar("D_SGradientSum", self.d_gradients)
         return tf.summary.merge_all()
+
+    def reset_graph(self):
+        tf.reset_default_graph()
+
+
+class ModeDiscriminator():
+    "Idea based on Tong Che et al. Mode Regularized Generative Adversarial Networks (https://arxiv.org/abs/1612.02136)"
+    def __init__(self, flags, tests_per_mode=10):
+        self.FLAGS = flags
+        self.img_dim = self.FLAGS.input_dim
+        self.FLAGS = flags
+        self.tests_per_mode = tests_per_mode
+
+        # Placeholder
+        self.X = tf.placeholder(tf.float32, shape=[None, self.img_dim], name='X')
+        std = 0.01
+        noise = tf.random_normal(shape=tf.shape(self.X), mean=0.0, stddev=std, dtype=tf.float32)
+        self.X += noise
+        # label 1 means real data sample and 0 generated
+        self.label = tf.placeholder(tf.float32, shape=[None], name='label')
+
+        self.train_graph()
+        self.test_graph()
+
+    def train_graph(self):
+        self.d_logit, self.theta = self.discriminator(self.X)
+        self.d_logit = tf.reshape(self.d_logit, [-1])
+
+        loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=self.d_logit, labels=self.label)
+        self.solver = tf.train.AdamOptimizer().minimize(loss)
+
+    def test_graph(self):
+        # At test time we give the discriminator 10 [tests_per_mode] real samples of each of the modes. One batch corresponds therefore to 10x10 images.
+        self.d_res = tf.nn.sigmoid(self.d_logit)
+        self.d_res = tf.reshape(self.d_res, [10, self.tests_per_mode])
+        self.d_res_mean = tf.reduce_mean(self.d_res, axis=0)
+        threshold = 0.98
+        self.missing_modes = tf.where(tf.greater(self.d_res_mean, threshold))
+
+
+    def discriminator(self, x):
+        with tf.variable_scope("mode_discriminator"):
+            d_hidden = tf.layers.dense(x, self.FLAGS.D_h1, activation=tf.nn.relu, kernel_initializer=xavier_initializer(), name="D1")
+            d_logit = tf.layers.dense(d_hidden, 1, kernel_initializer=xavier_initializer(), name="D2")
+        theta_d = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="mode_discriminator")
+        return d_logit, theta_d
 
     def reset_graph(self):
         tf.reset_default_graph()

@@ -1,5 +1,6 @@
 import matplotlib
 #matplotlib.use('Agg')
+import tensorflow as tf
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
@@ -12,6 +13,7 @@ from scipy.stats import entropy
 from sklearn.cluster import KMeans
 import progressbar
 import pprint
+import pickle
 
 
 def sample_Z(m, n):
@@ -22,6 +24,12 @@ def setup_directories(*dirs):
     for _dir in dirs:
         if not os.path.exists(_dir):
             os.makedirs(_dir)
+
+def get_flags(dataset, exp_no):
+    path = "results/{}/exp_{}/checkpoint/flags".format(dataset, exp_no)
+    with open(path, 'rb') as file:
+        FLAGS = pickle.load(file)
+    return FLAGS
 
 class Helper():
     def __init__(self, FLAGS):
@@ -44,11 +52,15 @@ class Helper():
         self.FLAGS.output_dir = self.exp_dir + self.FLAGS.output_dir
         self.FLAGS.summaries_dir = self.exp_dir + self.FLAGS.summaries_dir
         self.FLAGS.array_dir = self.exp_dir + self.FLAGS.array_dir
+        self.FLAGS.checkpoint_dir = self.exp_dir + self.FLAGS.checkpoint_dir
 
-        setup_directories(self.FLAGS.output_dir, self.FLAGS.summaries_dir, self.FLAGS.array_dir)
+        setup_directories(self.FLAGS.output_dir, self.FLAGS.summaries_dir, self.FLAGS.array_dir, self.FLAGS.checkpoint_dir)
 
         with open(self.exp_dir + "_info.txt", 'w') as f:
             f.write(self.get_info_string())
+
+        with open(self.FLAGS.checkpoint_dir + "flags", 'wb') as file:
+            pickle.dump(self.FLAGS, file, protocol=pickle.HIGHEST_PROTOCOL)
 
         return self.FLAGS
 
@@ -62,29 +74,45 @@ class Helper():
         return info
 
 
-    def print_opt_methods(self, opt_methods):
+    def print_opt_methods(self, opt_methods, mmode_info=None, img_name="Gradients"):
         discr_keys = [key for key, val in opt_methods.items() if '_d' in key]
         gen_keys = [key for key, val in opt_methods.items() if '_g' in key]
 
-        plt.figure(1, figsize=(10, 10))
-        plt.subplot(211)
-        plt.title("Gradientsum Discriminator")
+        plt.figure(1, figsize=(10, 12))
+        if mmode_info is not None:
+            plt.subplot2grid((11, 3), (0, 0), colspan=3, rowspan=4)
+        else:
+            plt.subplot(211)
+        plt.title("Log Gradientsum Discriminator")
         plt.xlabel("Iterations")
         for key in discr_keys:
-            val = opt_methods[key]
+            val = np.log(opt_methods[key])
             x = np.array(range(len(val))) * int(1000)
             plt.plot(x, val, label=key.split("_")[0])
         plt.legend()
 
-        plt.subplot(212)
-        plt.title("Gradientsum Generator")
+        if mmode_info is not None:
+            plt.subplot2grid((11, 3), (5, 0), colspan=3, rowspan=4)
+        else:
+            plt.subplot(212)
+        plt.title("Log Gradientsum Generator")
         for key in gen_keys:
-            val = opt_methods[key]
+            val = np.log(opt_methods[key])
             x = np.array(range(len(val))) * int(1000)
             plt.plot(x, val, label=key.split("_")[0])
         plt.legend()
 
-        plt.savefig(self.exp_dir + "Gradients.png")
+        if mmode_info is not None:
+            # Add information to plot
+            string = "Mode Collapsing Results: \n"
+            for optimizer in self.FLAGS.opt_methods.split(" "):
+                string += "For {}-model \n      Mean discrimination per mode: {} \n      Missing Modes: {} \n".format(
+                    optimizer.upper(), mmode_info[optimizer + "_per_digit"], mmode_info[optimizer + "_missing_modes"])
+
+            plt.figtext(.02, .02, string)
+
+
+        plt.savefig(self.FLAGS.checkpoint_dir + "../{}.png".format(img_name))
         plt.show()
 
     def setup_progressbar(self):
@@ -212,9 +240,9 @@ def load_opt_arrays(FLAGS):
         opt_methods[method + "_g"] = np.array([])
         opt_methods[method + "_d"] = np.array([])
         if os.path.isfile(_dir + method +"_g.npy"):
-            opt_methods[method + "_g"] = np.array([]) #np.load(dir + method +"_g.npy")[5:]
+            opt_methods[method + "_g"] = np.load(_dir + method +"_g.npy")
         if os.path.isfile(_dir + method +"_d.npy"):
-            opt_methods[method + "_d"] = np.array([]) #np.load(dir + method +"_d.npy")[5:]
+            opt_methods[method + "_d"] = np.load(_dir + method +"_d.npy")
 
     return opt_methods
 

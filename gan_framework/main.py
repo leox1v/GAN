@@ -14,7 +14,7 @@ import progressbar
 
 
 flags = tf.app.flags
-flags.DEFINE_integer("max_iter", 15, "Maximum of iterations to train in thousands [25]")
+flags.DEFINE_integer("max_iter", 25, "Maximum of iterations to train in thousands [25]")
 flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
 flags.DEFINE_string("dataset", "mnist", "The dataset that is used. [toy, MNIST]")
 
@@ -24,13 +24,13 @@ flags.DEFINE_integer("modes", 4, "The number of gaussian modes. [4]")
 flags.DEFINE_integer("D_h1", 128, "The hidden dimension of the first layer of the Discriminator. [10]")
 flags.DEFINE_integer("G_h1", 128, "The hidden dimension of the first layer of the Generator. [10]")
 
-flags.DEFINE_integer("z_dim", 10, "The size of latent vector z.[256]")
+flags.DEFINE_integer("z_dim", 50, "The size of latent vector z.[256]")
+flags.DEFINE_string("checkpoint_dir", "checkpoint/", "Directory name to save the checkpoints [checkpoint]")
 flags.DEFINE_string("output_dir", "out/", "Directory name to save the image samples [samples]")
 flags.DEFINE_string("summaries_dir", "tensorboard/", "Directory to use for the summary.")
 flags.DEFINE_string("array_dir", "arr/", "Directory to use for arrays to store.")
 flags.DEFINE_string("opt_methods", "extragrad sgd adagrad adam", "Optimization methods that needs to be compared")
 flags.DEFINE_string("learning_rates", "0.05 0.01 0.1 0.001", "Learning rates for the different opt_methods, respectively.")
-#sgd adagrad adam
 
 
 pp = pprint.PrettyPrinter()
@@ -61,10 +61,17 @@ def train(optimizer, opt_methods, data, helper, FLAGS, learning_rate):
 
     # initialize session
     sess = tf.Session()
+    saver = tf.train.Saver()
     sess.run(tf.global_variables_initializer())
+    modelname = "model_{}".format(optimizer)
+    if os.path.isfile(FLAGS.checkpoint_dir + modelname + ".meta"):
+        saver.restore(sess, FLAGS.checkpoint_dir + modelname)
+        print("Model loaded from: '{}'.".format(FLAGS.checkpoint_dir + modelname))
+    else:
+        print("\n[i] New model initialized.")
+
 
     # setup
-    setup_directories(FLAGS.output_dir, FLAGS.summaries_dir)
     train_writer = tf.summary.FileWriter(FLAGS.summaries_dir + 'train', sess.graph)
     bar = helper.setup_progressbar()
 
@@ -95,7 +102,7 @@ def train(optimizer, opt_methods, data, helper, FLAGS, learning_rate):
         train_writer.add_summary(summary, it)
 
 
-        if it % 500 == 0:
+        if it % 1000 == 0:
             bar.update(it)
 
             # Validation
@@ -104,6 +111,7 @@ def train(optimizer, opt_methods, data, helper, FLAGS, learning_rate):
             # Get the gradient of the whole training set and add the value to the opt_arrays
             opt_methods = helper.batch_gradient(data, model, sess, opt_methods)
 
+    saver.save(sess, FLAGS.checkpoint_dir + modelname)
     model.reset_graph()
     return opt_methods
 
