@@ -17,7 +17,7 @@ In the end a plot is produced that shows the evaluated gradients over time for t
 
 ## Optimizers
 
-![Equations](/imgs/optimizers_equ.png)
+![Equations](/imgs/optimizers_equ.png).
 
 <!--### SGD
 $$ \Theta^{t+1} \leftarrow \Theta^t - \eta \frac{1}{n}\sum_{i=1}^n \nabla_{\Theta} J(\Theta^t; x_n, y_n) $$
