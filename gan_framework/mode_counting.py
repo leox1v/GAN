@@ -11,7 +11,7 @@ dataset = "toy"
 exp_no = 0
 
 
-def main():
+def main(dataset=dataset, exp_no=exp_no):
     # Parameters
     train_iterations = 5000
     batch_size = 64

@@ -15,17 +15,17 @@ import progressbar
 
 flags = tf.app.flags
 flags.DEFINE_integer("max_iter", 10, "Maximum of iterations to train in thousands [25]")
-flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
+flags.DEFINE_integer("batch_size", 256, "The size of batch images [64]")
 
 flags.DEFINE_string("dataset", "toy", "The dataset that is used. [toy, mnist]")
 flags.DEFINE_integer("input_dim", 2, "The dimension of the input samples. [2]")
 
 flags.DEFINE_integer("modes", 4, "The number of gaussian modes. [4]")
 
-flags.DEFINE_integer("D_h1", 128, "The hidden dimension of the first layer of the Discriminator. [10]")
-flags.DEFINE_integer("G_h1", 128, "The hidden dimension of the first layer of the Generator. [10]")
+flags.DEFINE_integer("D_h1", 10, "The hidden dimension of the first layer of the Discriminator. [10]")
+flags.DEFINE_integer("G_h1", 10, "The hidden dimension of the first layer of the Generator. [10]")
 
-flags.DEFINE_integer("z_dim", 50, "The size of latent vector z.[256]")
+flags.DEFINE_integer("z_dim", 10, "The size of latent vector z.[256]")
 flags.DEFINE_string("checkpoint_dir", "checkpoint/", "Directory name to save the checkpoints [checkpoint]")
 flags.DEFINE_string("output_dir", "out/", "Directory name to save the image samples [samples]")
 flags.DEFINE_string("summaries_dir", "tensorboard/", "Directory to use for the summary.")

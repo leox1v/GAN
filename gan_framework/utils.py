@@ -71,6 +71,7 @@ class Helper():
         info += "\nNetwork:\n"
         info += "Generator: {} -> (ReLu) {} -> {}\n".format(self.FLAGS.z_dim, self.FLAGS.G_h1, self.FLAGS.input_dim)
         info += "Discriminator: {} -> (ReLu) {} -> {} (Sigmoid)\n".format(self.FLAGS.input_dim, self.FLAGS.D_h1, 1)
+        info += "Batch Size: {}".format(self.FLAGS.batch_size)
         return info
 
 
@@ -113,7 +114,8 @@ class Helper():
 
 
         plt.savefig(self.FLAGS.checkpoint_dir + "../{}.png".format(img_name))
-        plt.show()
+        #plt.show()
+        plt.close()
 
     def setup_progressbar(self):
         ind = [idx for (idx, x) in list(enumerate(self.FLAGS.opt_methods.split(" "))) if x == self.optimizer][0] + 1
@@ -165,7 +167,8 @@ class Helper():
         ax.set_facecolor(sns.color_palette('Greens', n_colors=256)[0])
         ax.scatter([mean[0] for mean in fake_dataset.means], [mean[1] for mean in fake_dataset.means], c='r', marker="D")
         ax.scatter(km_centers[:,0], km_centers[:,1], marker='o')
-        ax.set_title("Step {}; JSD = {}".format(self.local_img_counter, np.round(jsd, 4)))
+        #ax.set_title("Step {}; JSD = {}".format(self.local_img_counter, np.round(jsd, 4)))
+        ax.set_title("{}, Step {}k".format(self.optimizer.upper(),self.local_img_counter))
 
         fig = g
         return fig
