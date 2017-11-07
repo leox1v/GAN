@@ -3,3 +3,10 @@ __*
 *tensorboard*
 *MNIST_data*
 *.idea*
+*gan_optimization
+*vanilla_2d_gan*
+*results*
+*info_gan
+*converge_gan
+*conditional_gan
+*.sh

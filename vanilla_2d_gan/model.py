@@ -1,107 +1,120 @@
-import numpy as np
 import tensorflow as tf
+from tensorflow.contrib.layers import xavier_initializer
 
 class Model():
-    def __init__(self, flags):
+    def __init__(self, flags, opt="adam", learning_rate=0.001):
+        self.opt = opt
         self.FLAGS = flags
-        self.dim = self.FLAGS.input_dim
+        self.img_dim = self.FLAGS.input_dim
         self.z_dim = self.FLAGS.z_dim
+        self.out_img_dim = self.FLAGS.input_dim
 
-        # Variables for Discriminator Net
-        # ------------------------------------
-        self.X = tf.placeholder(tf.float32, shape=[None, self.dim], name='X')
-
-        self.D_W1 = tf.Variable(self.xavier_init([self.dim, self.FLAGS.D_h1]), name='D_W1')
-        self.D_b1 = tf.Variable(tf.zeros(shape=[self.FLAGS.D_h1]), name='D_b1')
-
-        self.D_W2 = tf.Variable(self.xavier_init([self.FLAGS.D_h1, self.FLAGS.D_h2]), name='D_W2')
-        self.D_b2 = tf.Variable(tf.zeros(shape=[self.FLAGS.D_h2]), name='D_b2')
-
-        self.D_W3 = tf.Variable(self.xavier_init([self.FLAGS.D_h2, 1]), name='D_W3')
-        self.D_b3 = tf.Variable(tf.zeros(shape=[1]), name='D_b3')
-
-        self.theta_D = [self.D_W1, self.D_W2, self.D_W3, self.D_b1, self.D_b2, self.D_b3]
-
-        # Variables for Generator Net
-        # ------------------------------------
+        # Placeholder
+        self.X = tf.placeholder(tf.float32, shape=[None, self.img_dim], name='X')
         self.Z = tf.placeholder(tf.float32, shape=[None, self.FLAGS.z_dim], name='Z')
 
-        self.G_W1 = tf.Variable(self.xavier_init([self.z_dim, self.FLAGS.G_h1]), name='G_W1')
-        self.G_b1 = tf.Variable(tf.zeros(shape=[self.FLAGS.G_h1]), name='G_b1')
+        self.g_z, self.theta_g, self.theta_d, self.D_loss, self.G_loss = self.training_procedure()
+        self.get_variables = {v.name: v for v in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)}
 
-        self.G_W2 = tf.Variable(self.xavier_init([self.FLAGS.G_h1, self.FLAGS.G_h2]), name='G_W2')
-        self.G_b2 = tf.Variable(tf.zeros(shape=[self.FLAGS.G_h2]), name='G_b2')
+        if opt == "sgd":
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+        elif opt == "adagrad":
+            optimizer = tf.train.AdagradOptimizer(learning_rate=learning_rate)
+        elif opt == "extragrad":
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+            # Copy the original network
+            self.g_z_c, self.theta_g_c, self.theta_d_c, self.D_loss_c, self.G_loss_c = self.training_procedure(is_copy=True)
+            self.merge_weight_mat = self.merge_weights()
 
-        self.G_W3 = tf.Variable(self.xavier_init([self.FLAGS.G_h2, self.dim]), name='G_W3')
-        self.G_b3 = tf.Variable(tf.zeros(shape=[self.dim]), name='G_b3')
+            self.d_solver_c, self.d_gradients_c, d_grads_vars_c = self.minimize(optimizer, self.D_loss_c,
+                                                                                self.theta_d_c)
+            self.g_solver_c, self.g_gradients_c, g_grads_vars_c = self.minimize(optimizer, self.G_loss_c,
+                                                                                self.theta_g_c)
 
-        self.theta_G = [self.G_W1, self.G_W2,  self.G_W3, self.G_b1, self.G_b2,  self.G_b3]
+            # Execute only after SGD step on copied network has been done already
+            self.d_grads_vars_extra = self.minimize_extra(optimizer, self.D_loss_c, self.theta_d_c, self.theta_d)
+            self.g_grads_vars_extra = self.minimize_extra(optimizer, self.G_loss_c, self.theta_g_c, self.theta_g)
+        else:
+            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 
-        # Training Procedure
-        self.G_sample = self.generator(self.Z)
-        D_real, D_logit_real = self.discriminator(self.X)
-        D_fake, D_logit_fake = self.discriminator(self.G_sample)
+        self.d_solver, self.d_gradients, d_grads_vars = self.minimize(optimizer, self.D_loss, self.theta_d)
+        self.g_solver, self.g_gradients, g_grads_vars = self.minimize(optimizer, self.G_loss, self.theta_g)
 
-        # Loss for Discriminator: - log D(x) - log(1-D(G(x)))
-        D_loss_real = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_real, labels=tf.ones_like(D_logit_real)))
-        D_loss_fake = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_fake, labels=tf.zeros_like(D_logit_fake)))
-        self.D_loss = D_loss_real + D_loss_fake
-
-        # Loss for Generator: -log(D(G(x)))
-        self.G_loss = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_fake, labels=tf.ones_like(D_logit_fake)))
-
-        # Only update D(X)'s parameters, so var_list = theta_D
-        #self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.theta_D)
-        d_optimizer = tf.train.AdamOptimizer(self.FLAGS.learning_rate, self.FLAGS.opt_beta_1)
-        d_gvs = d_optimizer.compute_gradients(self.D_loss, var_list=self.theta_D)
-        self.D_solver = d_optimizer.apply_gradients(d_gvs)
-        list_of_gradmat = tf.concat([tf.reshape(d_gv[0], [-1]) for d_gv in d_gvs],0)
-        self.d_gradients = tf.reduce_sum(tf.square(list_of_gradmat))
-
-        # Only update G(X)'s parameters, so var_list = theta_G
-        #self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.theta_G)
-        g_optimizer = tf.train.AdamOptimizer()
-        g_gvs = g_optimizer.compute_gradients(self.G_loss, var_list=self.theta_G)
-        self.G_solver = g_optimizer.apply_gradients(g_gvs)
-        list_of_gradmat = tf.concat([tf.reshape(g_gv[0], [-1]) for g_gv in g_gvs], 0)
-        self.g_gradients = tf.reduce_sum(tf.square(list_of_gradmat))
 
         self.merged = self.add_tboard()
 
-    def generator(self, z):
-        G_h1 = tf.nn.relu(tf.matmul(z, self.G_W1) + self.G_b1)
-        G_h2 = tf.nn.relu(tf.matmul(G_h1, self.G_W2) + self.G_b2)
-        G_res = tf.matmul(G_h2, self.G_W3) + self.G_b3
+    def merge_weights(self):
+        assign_ops = []
+        for i in range(len(self.theta_g)):
+            assign_ops.append(self.theta_g_c[i].assign(self.theta_g[i]))
 
-        return G_res
+        for i in range(len(self.theta_d)):
+            assign_ops.append(self.theta_d_c[i].assign(self.theta_d[i]))
+        return assign_ops
 
-    def discriminator(self, x):
-        D_h1 = tf.nn.relu(tf.matmul(x, self.D_W1) + self.D_b1)
-        D_h2 = tf.nn.relu(tf.matmul(D_h1, self.D_W2) + self.D_b2)
-        D_logit = tf.matmul(D_h2, self.D_W3) + self.D_b3
-        D_prob = tf.nn.sigmoid(D_logit)  # 1 probability that tells us if generated from p_data
+    def minimize(self, optimizer, loss, var_list):
+        grads_vars = optimizer.compute_gradients(loss, var_list=var_list)
+        solver = optimizer.apply_gradients(grads_vars)
+        list_of_gradmat = tf.concat([tf.reshape(gv[0], [-1]) for gv in grads_vars], 0)
+        squared_gradients = tf.reduce_sum(tf.square(list_of_gradmat))
+        return solver, squared_gradients, grads_vars
 
-        return D_prob, D_logit
+    def minimize_extra(self, optimizer, loss, var_list, var_list_to_apply):
+        grads_vars = optimizer.compute_gradients(loss, var_list=var_list)
+        g = [gv[0] for gv in grads_vars]
+        grads_vars = [(g[idx], var_list_to_apply[idx]) for idx in range(len(var_list_to_apply))]
+        solver = optimizer.apply_gradients(grads_vars)
+        return solver
+
+
+    def training_procedure(self, is_copy=False):
+        # Training Procedure
+        g_z, theta_g = self.generator(self.Z, is_copy=is_copy)
+        d_logit_real, theta_d = self.discriminator(self.X, is_copy=is_copy)
+        d_logit_synth, _ = self.discriminator(g_z, reuse=True, is_copy=is_copy)
+
+        # Loss for Discriminator: - log D(x) - log(1-D(G(z)))
+        D_loss_real = tf.reduce_mean(
+            tf.nn.sigmoid_cross_entropy_with_logits(logits=d_logit_real, labels=tf.ones_like(d_logit_real)))
+        D_loss_fake = tf.reduce_mean(
+            tf.nn.sigmoid_cross_entropy_with_logits(logits=d_logit_synth, labels=tf.zeros_like(d_logit_synth)))
+        D_loss = D_loss_real + D_loss_fake
+
+        # Loss for Generator: -log(D(G(z)))
+        G_loss = tf.reduce_mean(
+            tf.nn.sigmoid_cross_entropy_with_logits(logits=d_logit_synth, labels=tf.ones_like(d_logit_synth)))
+
+        return g_z, theta_g, theta_d, D_loss, G_loss
+
+    def generator(self, z, reuse=False, is_copy=False):
+        scope = "generator"
+        if is_copy:
+            scope += "_copy"
+        with tf.variable_scope(scope):
+            g_hidden = tf.layers.dense(z, self.FLAGS.G_h1, activation=tf.nn.relu, kernel_initializer=xavier_initializer(), name="G1", reuse=reuse)
+            g_z = tf.layers.dense(g_hidden, self.img_dim, kernel_initializer=xavier_initializer(), name="G2", reuse=reuse)
+            #g_z = tf.nn.sigmoid(g_logit)
+        theta_g = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope)
+        return g_z, theta_g
+
+
+    def discriminator(self, x, reuse=False, is_copy=False):
+        scope = "discriminator"
+        if is_copy:
+            scope += "_copy"
+        with tf.variable_scope(scope):
+            d_hidden = tf.layers.dense(x, self.FLAGS.D_h1, activation=tf.nn.relu, kernel_initializer=xavier_initializer(), reuse=reuse, name="D1")
+            d_logit = tf.layers.dense(d_hidden, 1, kernel_initializer=xavier_initializer(), reuse=reuse, name="D2")
+        theta_d = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope)
+        return d_logit, theta_d
 
     def add_tboard(self):
         tf.summary.scalar('D_loss', self.D_loss)
         tf.summary.scalar("G_loss", self.G_loss)
         tf.summary.scalar("G_SGradientSum", self.g_gradients)
         tf.summary.scalar("D_SGradientSum", self.d_gradients)
-        tf.summary.histogram("D_W1", self.D_W1)
-        tf.summary.histogram("D_W2", self.D_W2)
-        tf.summary.histogram("D_W3", self.D_W3)
-        tf.summary.histogram("G_W1", self.G_W1)
-        tf.summary.histogram("G_W2", self.G_W2)
-        tf.summary.histogram("G_W3", self.G_W3)
-
         return tf.summary.merge_all()
 
-    def xavier_init(self, size):
-        in_dim = size[0]
-        xavier_stddev = 1. / tf.sqrt(in_dim / 2.)
-        return tf.random_normal(shape=size, stddev=xavier_stddev)
+    def reset_graph(self):
+        tf.reset_default_graph()
 

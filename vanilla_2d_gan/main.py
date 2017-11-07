@@ -1,48 +1,64 @@
 import numpy as np
 import tensorflow as tf
-import matplotlib as mt
-mt.use('Agg')
+import matplotlib
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import os
 
 from model import Model
+from model_old import Model as ModelOld
 import pprint
 from utils import *
+from utils import Helper
 from dataset import DataSet
+import progressbar
 
 
 flags = tf.app.flags
-flags.DEFINE_integer("max_iter", 25, "Maximum of iterations to train in thousands [25]")
+flags.DEFINE_integer("max_iter", 1, "Maximum of iterations to train in thousands [25]")
 flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
-flags.DEFINE_integer("input_dim", 2, "The dimension of the input samples. [2]")
+flags.DEFINE_string("dataset", "mnist", "The dataset that is used. [toy, MNIST]")
+
+flags.DEFINE_integer("input_dim", 784, "The dimension of the input samples. [2]")
 flags.DEFINE_integer("modes", 4, "The number of gaussian modes. [4]")
 
-flags.DEFINE_integer("D_h1", 128, "The hidden dimension of the first layer of the Discriminator. [128]")
-flags.DEFINE_integer("D_h2", 128, "The hidden dimension of the second layer of the Discriminator. [128]")
-flags.DEFINE_integer("G_h1", 128, "The hidden dimension of the first layer of the Generator. [128]")
-flags.DEFINE_integer("G_h2", 128, "The hidden dimension of the second layer of the Generator. [128]")
+flags.DEFINE_integer("D_h1", 128, "The hidden dimension of the first layer of the Discriminator. [10]")
+flags.DEFINE_integer("G_h1", 128, "The hidden dimension of the first layer of the Generator. [10]")
 
-flags.DEFINE_float("learning_rate", 1E-4, "The learning rate of the optimization. [1E-4]")
-flags.DEFINE_float("opt_beta_1", 0.5, "The beta 1 value of the optimizer. [1E-4]")
-
-flags.DEFINE_integer("z_dim", 256, "The size of latent vector z.[256]")
+flags.DEFINE_integer("z_dim", 10, "The size of latent vector z.[256]")
 flags.DEFINE_string("output_dir", "out/", "Directory name to save the image samples [samples]")
 flags.DEFINE_string("summaries_dir", "tensorboard/", "Directory to use for the summary.")
+flags.DEFINE_string("array_dir", "arr/", "Directory to use for arrays to store.")
+flags.DEFINE_string("opt_methods", "extragrad sgd adagrad adam", "Optimization methods that needs to be compared")
+flags.DEFINE_string("learning_rates", "0.05 0.01 0.1 0.001", "Learning rates for the different opt_methods, respectively.")
+#sgd adagrad adam
 
-
-FLAGS = flags.FLAGS
 
 pp = pprint.PrettyPrinter()
 
-
 def main(_):
+    FLAGS = flags.FLAGS
     pp.pprint(flags.FLAGS.__flags)
 
-    # specify the network
-    model = Model(flags=FLAGS)
-
     # load data
-    data = DataSet(modes=FLAGS.modes)
+    data = DataSet(dataset=FLAGS.dataset, modes=FLAGS.modes)
+    helper = Helper(FLAGS)
+    FLAGS = helper.setup_directories()
+
+    opt_methods = load_opt_arrays(FLAGS)
+
+    for i, opt in enumerate(FLAGS.opt_methods.split(" ")):
+        learning_rate = float(FLAGS.learning_rates.split(" ")[i])
+        opt_methods = train(opt, opt_methods, data, helper, FLAGS, learning_rate)
+
+    helper.print_opt_methods(opt_methods)
+
+
+
+def train(optimizer, opt_methods, data, helper, FLAGS, learning_rate):
+    # specify the network
+    model = Model(flags=FLAGS, opt=optimizer, learning_rate=learning_rate)
+    helper.optimizer = optimizer
 
     # initialize session
     sess = tf.Session()
@@ -50,36 +66,47 @@ def main(_):
 
     # setup
     setup_directories(FLAGS.output_dir, FLAGS.summaries_dir)
-    i = 0
     train_writer = tf.summary.FileWriter(FLAGS.summaries_dir + 'train', sess.graph)
+    bar = helper.setup_progressbar()
 
-    for it in range(FLAGS.max_iter * int(1E3)):
+    helper.local_img_counter = 0
 
-        x_true_sample = data.next_batch(FLAGS.batch_size)
+    for it in range(FLAGS.max_iter * int(1E3) + 1):
 
-        _, D_loss, _, G_loss,_,_, summary  = sess.run([model.D_solver, model.D_loss, model.G_solver, model.G_loss,
-                                                                 model.d_gradients, model.g_gradients, model.merged],
-                                                                feed_dict={model.X: x_true_sample, model.Z: sample_Z(FLAGS.batch_size, model.z_dim)})
+        # Data batch
+        X = data.next_batch(FLAGS.batch_size)
+        Z = sample_Z(FLAGS.batch_size, model.z_dim)
+
+        if optimizer == "extragrad":
+            # Set weights from copied network to the original one
+            sess.run([model.merge_weight_mat])
+
+            # Do SGD step on the copied network
+            sess.run([model.d_solver_c, model.g_solver_c], feed_dict={model.X: X, model.Z: Z})
+
+            # Do the extragradient step where I compute the gradients on the updated copied network and then apply those gradients
+            # to the original network
+            _,_, summary = sess.run([model.d_grads_vars_extra, model.g_grads_vars_extra, model.merged], feed_dict={model.X: X, model.Z: Z})
+
+        else:
+           _, D_loss, _, G_loss,_,_, summary  = sess.run([model.d_solver, model.D_loss, model.g_solver, model.G_loss,
+                                                                     model.d_gradients, model.g_gradients, model.merged],
+                                                                    feed_dict={model.X: X, model.Z: Z})
+
         train_writer.add_summary(summary, it)
 
-        if it % 1000 == 0:
-            validate_performance(sess, model, i, data)
-            i += 1
 
+        if it % 500 == 0:
+            bar.update(it)
 
-def validate_performance(sess, model, i_img, dataset):
-    # Get iterations*batch_size samples from the current generator
-    iterations = 10
-    samples = np.zeros([iterations*FLAGS.batch_size, FLAGS.input_dim])
-    for i in range(iterations):
-        samples[i*FLAGS.batch_size:(i+1)*FLAGS.batch_size,:] = sess.run(model.G_sample, feed_dict={model.Z: sample_Z(FLAGS.batch_size, model.z_dim)})
+            # Validation
+            helper.validate_visually(sess, model, data)
 
+            # Get the gradient of the whole training set and add the value to the opt_arrays
+            opt_methods = helper.batch_gradient(data, model, sess, opt_methods)
 
-    # Compute the Jensen-Shannon Divergence between the generating distribution and the gaussian mixture fitted to the kmeans result
-    jsd, km_centers = compute_JSD(dataset, samples, get_centers=True)
-    fig = plot_heat(samples, dataset, i_img, km_centers, jsd)
-    plt.savefig(FLAGS.output_dir + '{}.png'.format(str(i_img).zfill(3)))
-
+    model.reset_graph()
+    return opt_methods
 
 
 
