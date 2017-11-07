@@ -18,7 +18,7 @@ In the end a plot is produced that shows the evaluated gradients over time for t
 ## Optimizers
 
 ### SGD
-$$ \Theta^{t+1} \leftarrow \Theta^t - \eta \frac{1}{n}\sum_{i=1}^n \nabla_{\Theta} J(\Theta^t; x_n, y_n) $$
+\[ \Theta^{t+1} \leftarrow \Theta^t - \eta \frac{1}{n}\sum_{i=1}^n \nabla_{\Theta} J(\Theta^t; x_n, y_n) $ \]
 ### AdaGrad
 AdaGrad adapts the learning rate. It sums up the gradients of the previous steps for all the parameters. The larger the sum for a specific parameter the more it has been updated already and the learning rate is chosen to be a smaller value.
 
