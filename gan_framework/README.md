@@ -17,7 +17,9 @@ In the end a plot is produced that shows the evaluated gradients over time for t
 
 ## Optimizers
 
-### SGD
+![Equations](/imgs/optimizers_equ.png)
+
+<!--### SGD
 $$ \Theta^{t+1} \leftarrow \Theta^t - \eta \frac{1}{n}\sum_{i=1}^n \nabla_{\Theta} J(\Theta^t; x_n, y_n) $$
 ### AdaGrad
 AdaGrad adapts the learning rate. It sums up the gradients of the previous steps for all the parameters. The larger the sum for a specific parameter the more it has been updated already and the learning rate is chosen to be a smaller value.
@@ -44,7 +46,7 @@ $$  \begin{align} m^{t+1}_i &= \beta_1 m^{t}_i + (1- \beta_1) \nabla_{\Theta_i}J
  					 \hat{v_i} &= \frac{v^{t+1}_i}{1 - \beta_2} \\
  					 \Theta^{t+1}_i &\leftarrow \Theta^{t}_i - \eta \frac{\hat{m_i}}{\sqrt{\hat{v_i}} + \epsilon}
 \end{align}$$ 
-
+-->
 
 ## Mode Collapsing
 Mode Collapsing is a known issue of GANs addressed in many papers []. The question is whether mode collapsing is related to non-optimal saddle-points of the objective function, i.e. do we have an equlibrium with vanishing gradients in the collapsed state. If those saddle points exists, which optimization schemes are best in overcoming those and leading to a global optimum?
