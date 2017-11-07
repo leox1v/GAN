@@ -7,8 +7,8 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 # Parameters
-dataset = "mnist"
-exp_no = 3
+dataset = "toy"
+exp_no = 0
 
 
 def main():
@@ -25,13 +25,14 @@ def main():
     results = dict()
     data = DataSet(dataset=FLAGS.dataset, modes=FLAGS.modes)
 
-    sorted_mnist, sorted_labels = sorted_MNIST_batch(data)
+    tests_per_mode = 20
+    sorted_batch, sorted_labels = data.sorted_batch(tests_per_mode)
 
     for optimizer in FLAGS.opt_methods.split(" "):
 
         modelname = "model_{}".format(optimizer)
 
-        model = ModeDiscriminator(FLAGS)
+        model = ModeDiscriminator(FLAGS, tests_per_mode)
 
         sess = tf.Session()
 
@@ -60,21 +61,14 @@ def main():
             sess.run(model.solver, feed_dict={model.X: samples, model.label: labels})
 
         # Test the trained network and specify the missing modes
-        d_res_mean, d_res, missing_modes = sess.run([model.d_res_mean, model.d_res, model.missing_modes], feed_dict={model.X: sorted_mnist, model.label: sorted_labels})
+        d_res_mean, d_res, missing_modes = sess.run([model.d_res_mean, model.d_res, model.missing_modes],
+                                                    feed_dict={model.X: sorted_batch, model.label: sorted_labels})
         print("----------------- \n Results for {}-model".format(optimizer.upper()))
-        print("Per Digit mean confidence: {}".format(d_res_mean))
+        print("Per Mode mean confidence: {}".format(d_res_mean))
         print("Missing modes: {}".format(np.ravel(missing_modes)))
 
-        # Visually validate result
-        #for it in range(10):
-        #    z_gen = sample_Z(16, FLAGS.z_dim)
-        #    samples_gen = sess.run(['generator/g_z:0'], feed_dict={'Z:0': z_gen})
-        #    samples_gen = np.reshape(samples_gen, [16, -1])
-        #    fig = plot(samples_gen)
-        #    plt.show(fig)
 
-
-        results[optimizer + "_per_digit"] = np.array(np.array(d_res_mean) * 1000).astype(int)/ 1000.0
+        results[optimizer + "_per_mode"] = np.array(np.array(d_res_mean) * 1000).astype(int)/ 1000.0
         results[optimizer + "_missing_modes"] = np.ravel(missing_modes)
 
         model.reset_graph()
@@ -85,26 +79,6 @@ def main():
 
     return results
 
-
-def sorted_MNIST_batch(data):
-    completed = False
-    sorted_mnist = np.zeros([10, 10, 784])
-    counter = np.zeros(10).astype(int)
-
-    while not completed:
-        imgs, labels = data.next_batch(100, test=True)
-        labels = np.argmax(labels, axis=1).astype(int)
-        for i, label in enumerate(labels):
-            if counter[label] < 10:
-                sorted_mnist[label, counter[label], :] = imgs[i]
-                counter[label] += 1
-        #print("Not yet completed! with: {}".format(counter))
-        completed = np.all(counter >= 10)
-
-    sorted_mnist = np.reshape(sorted_mnist, [-1, 784])
-    labels = np.repeat(range(10), 10)
-
-    return sorted_mnist, labels
 
 
 

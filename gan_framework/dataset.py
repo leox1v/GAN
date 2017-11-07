@@ -15,6 +15,8 @@ class DataSet():
             self.sample_data = self.next_batch(10000)
         elif self.dataset == "mnist":
             self.data = input_data.read_data_sets("MNIST_data/", one_hot=True)
+            self.modes = 10
+            self.dim = 784
 
     def generate_fake_distribution(self):
         thetas = np.linspace(0, 2 * np.pi, self.modes+1)
@@ -50,5 +52,32 @@ class DataSet():
             else:
                 samples, labels = self.data.train.next_batch(batch_size)
                 return samples
+
+    def sorted_batch(self, size_per_label):
+        if self.dataset == "toy":
+            labels = np.repeat(range(self.modes), size_per_label)
+            mean = np.array([self.means[mode] for mode in labels])
+            samples = np.zeros([len(labels), self.dim])
+            for i in range(len(labels)):
+                samples[i, :] = np.random.multivariate_normal(mean[i], [[self.std,0], [0,self.std]])
+            return samples, labels
+        elif self.dataset == "mnist":
+            completed = False
+            sorted_batch = np.zeros([self.modes, size_per_label, self.dim])
+            counter = np.zeros(self.modes).astype(int)
+
+            while not completed:
+                imgs, labels = self.next_batch(100, test=True)
+                labels = np.argmax(labels, axis=1).astype(int)
+                for i, label in enumerate(labels):
+                    if counter[label] < size_per_label:
+                        sorted_batch[label, counter[label], :] = imgs[i]
+                        counter[label] += 1
+                # print("Not yet completed! with: {}".format(counter))
+                completed = np.all(counter >= size_per_label)
+            sorted_batch = np.reshape(sorted_batch, [-1, self.dim])
+            labels = np.repeat(range(self.modes), size_per_label)
+            return sorted_batch, labels
+
 
 

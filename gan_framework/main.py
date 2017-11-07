@@ -14,11 +14,12 @@ import progressbar
 
 
 flags = tf.app.flags
-flags.DEFINE_integer("max_iter", 25, "Maximum of iterations to train in thousands [25]")
+flags.DEFINE_integer("max_iter", 10, "Maximum of iterations to train in thousands [25]")
 flags.DEFINE_integer("batch_size", 64, "The size of batch images [64]")
-flags.DEFINE_string("dataset", "mnist", "The dataset that is used. [toy, MNIST]")
 
-flags.DEFINE_integer("input_dim", 784, "The dimension of the input samples. [2]")
+flags.DEFINE_string("dataset", "toy", "The dataset that is used. [toy, mnist]")
+flags.DEFINE_integer("input_dim", 2, "The dimension of the input samples. [2]")
+
 flags.DEFINE_integer("modes", 4, "The number of gaussian modes. [4]")
 
 flags.DEFINE_integer("D_h1", 128, "The hidden dimension of the first layer of the Discriminator. [10]")
@@ -111,6 +112,7 @@ def train(optimizer, opt_methods, data, helper, FLAGS, learning_rate):
             # Get the gradient of the whole training set and add the value to the opt_arrays
             opt_methods = helper.batch_gradient(data, model, sess, opt_methods)
 
+    bar.finish()
     saver.save(sess, FLAGS.checkpoint_dir + modelname)
     model.reset_graph()
     return opt_methods

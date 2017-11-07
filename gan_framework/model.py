@@ -129,6 +129,9 @@ class ModeDiscriminator():
         self.img_dim = self.FLAGS.input_dim
         self.FLAGS = flags
         self.tests_per_mode = tests_per_mode
+        self.modes = self.FLAGS.modes
+        if self.FLAGS.dataset == "mnist":
+            self.modes = 10
 
         # Placeholder
         self.X = tf.placeholder(tf.float32, shape=[None, self.img_dim], name='X')
@@ -151,9 +154,9 @@ class ModeDiscriminator():
     def test_graph(self):
         # At test time we give the discriminator 10 [tests_per_mode] real samples of each of the modes. One batch corresponds therefore to 10x10 images.
         self.d_res = tf.nn.sigmoid(self.d_logit)
-        self.d_res = tf.reshape(self.d_res, [10, self.tests_per_mode])
-        self.d_res_mean = tf.reduce_mean(self.d_res, axis=0)
-        threshold = 0.98
+        self.d_res = tf.reshape(self.d_res, [self.modes, self.tests_per_mode])
+        self.d_res_mean = tf.reduce_mean(self.d_res, axis=1)
+        threshold = 0.7
         self.missing_modes = tf.where(tf.greater(self.d_res_mean, threshold))
 
 

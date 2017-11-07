@@ -107,7 +107,7 @@ class Helper():
             string = "Mode Collapsing Results: \n"
             for optimizer in self.FLAGS.opt_methods.split(" "):
                 string += "For {}-model \n      Mean discrimination per mode: {} \n      Missing Modes: {} \n".format(
-                    optimizer.upper(), mmode_info[optimizer + "_per_digit"], mmode_info[optimizer + "_missing_modes"])
+                    optimizer.upper(), mmode_info[optimizer + "_per_mode"], mmode_info[optimizer + "_missing_modes"])
 
             plt.figtext(.02, .02, string)
 
